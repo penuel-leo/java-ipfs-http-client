@@ -53,17 +53,22 @@ public class IPFS {
     public final Name name = new Name();
     public final Pubsub pubsub = new Pubsub();
     public final VersionAPI version = new VersionAPI();
+    public final String authorization;
 
     public IPFS(String host, int port) {
         this(host, port, "/api/v0/", false);
     }
 
-    public IPFS(String multiaddr) {
-        this(new MultiAddress(multiaddr));
+    public IPFS(String multiaddr, String authorization) {
+        this(new MultiAddress(multiaddr), authorization);
     }
 
     public IPFS(MultiAddress addr) {
         this(addr.getHost(), addr.getPort(), "/api/v0/", detectSSL(addr));
+    }
+
+    public IPFS(MultiAddress addr, String authorization) {
+        this(addr.getHost(), addr.getPort(), authorization, "/api/v0/", true, DEFAULT_CONNECT_TIMEOUT_MILLIS, DEFAULT_READ_TIMEOUT_MILLIS,detectSSL(addr));
     }
 
     public IPFS(String host, int port, String version, boolean ssl) {
@@ -79,6 +84,10 @@ public class IPFS {
     }
 
     public IPFS(String host, int port, String version, boolean enforceMinVersion, int connectTimeoutMillis, int readTimeoutMillis, boolean ssl) {
+        this(host, port, null, version, enforceMinVersion, connectTimeoutMillis, readTimeoutMillis, ssl);
+    }
+
+    public IPFS(String host, int port, String authorization, String version, boolean enforceMinVersion, int connectTimeoutMillis, int readTimeoutMillis, boolean ssl) {
         if (connectTimeoutMillis < 0) throw new IllegalArgumentException("connect timeout must be zero or positive");
         if (readTimeoutMillis < 0) throw new IllegalArgumentException("read timeout must be zero or positive");
         this.host = host;
@@ -93,6 +102,7 @@ public class IPFS {
         }
 
         this.apiVersion = version;
+        this.authorization = authorization;
         // Check IPFS is sufficiently recent
         if (enforceMinVersion) {
             try {
@@ -1103,16 +1113,17 @@ public class IPFS {
 
     private String retrieveString(String path) throws IOException {
         URL target = new URL(protocol, host, port, apiVersion + path);
-        return new String(IPFS.get(target, connectTimeoutMillis, readTimeoutMillis));
+        return new String(IPFS.get(target, authorization, connectTimeoutMillis, readTimeoutMillis));
     }
 
     private byte[] retrieve(String path) throws IOException {
         URL target = new URL(protocol, host, port, apiVersion + path);
-        return IPFS.get(target, connectTimeoutMillis, readTimeoutMillis);
+        return IPFS.get(target, authorization, connectTimeoutMillis, readTimeoutMillis);
     }
 
-    private static byte[] get(URL target, int connectTimeoutMillis, int readTimeoutMillis) throws IOException {
+    private static byte[] get(URL target, String authorization, int connectTimeoutMillis, int readTimeoutMillis) throws IOException {
         HttpURLConnection conn = configureConnection(target, "POST", connectTimeoutMillis, readTimeoutMillis);
+        conn.setRequestProperty("Authorization", authorization);
         conn.setDoOutput(true);
         /* See IPFS commit for why this is a POST and not a GET https://github.com/ipfs/go-ipfs/pull/7097
            This commit upgrades go-ipfs-cmds and configures the commands HTTP API Handler
@@ -1201,11 +1212,12 @@ public class IPFS {
 
     private InputStream retrieveStream(String path) throws IOException {
         URL target = new URL(protocol, host, port, apiVersion + path);
-        return IPFS.getStream(target, connectTimeoutMillis, readTimeoutMillis);
+        return IPFS.getStream(target, authorization, connectTimeoutMillis, readTimeoutMillis);
     }
 
-    private static InputStream getStream(URL target, int connectTimeoutMillis, int readTimeoutMillis) throws IOException {
+    private static InputStream getStream(URL target, String authorization, int connectTimeoutMillis, int readTimeoutMillis) throws IOException {
         HttpURLConnection conn = configureConnection(target, "POST", connectTimeoutMillis, readTimeoutMillis);
+        conn.setRequestProperty("Authorization", authorization);
         try {
             return conn.getInputStream();
         } catch (IOException e) {
@@ -1215,11 +1227,12 @@ public class IPFS {
 
     private Map postMap(String path, byte[] body, Map<String, String> headers) throws IOException {
         URL target = new URL(protocol, host, port, apiVersion + path);
-        return (Map) JSONParser.parse(new String(post(target, body, headers, connectTimeoutMillis, readTimeoutMillis)));
+        return (Map) JSONParser.parse(new String(post(target, authorization, body, headers, connectTimeoutMillis, readTimeoutMillis)));
     }
 
-    private static byte[] post(URL target, byte[] body, Map<String, String> headers, int connectTimeoutMillis, int readTimeoutMillis) throws IOException {
+    private static byte[] post(URL target, String authorization, byte[] body, Map<String, String> headers, int connectTimeoutMillis, int readTimeoutMillis) throws IOException {
         HttpURLConnection conn = configureConnection(target, "POST", connectTimeoutMillis, readTimeoutMillis);
+        conn.setRequestProperty("Authorization", authorization);
         for (String key: headers.keySet())
             conn.setRequestProperty(key, headers.get(key));
         conn.setDoOutput(true);
